@@ -132,4 +132,14 @@ export class AuthService {
       message: 'Logged out successfully',
     };
   }
+
+  async logoutAll(userId: string) {
+    await this.prisma.refreshToken.deleteMany({
+      where: { userId },
+    });
+    return {
+      success: true,
+      message: 'Logged out from all devices successfully',
+    };
+  }
 }
