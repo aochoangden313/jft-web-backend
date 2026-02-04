@@ -6,6 +6,7 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { SubmitExamDto } from './dto/submit-exam.dto';
+import { SaveAnswerDto } from './dto/save-answer.dto';
 import { ExamSessionStatus } from '@prisma/client';
 
 @Injectable()
@@ -76,6 +77,74 @@ export class ExamsService {
     });
   }
 
+  /**
+   * UC-02: Save Answer (Lưu đáp án tạm thời)
+   *
+   * Flow:
+   * 1. Verify session exists and belongs to userId
+   * 2. Verify session status is IN_PROGRESS
+   * 3. Verify question belongs to this exam
+   * 4. Update ExamSessionAnswer using composite key (sessionId, questionId)
+   * 5. Return updated answer
+   *
+   * Composite key update syntax:
+   * where: { sessionId_questionId: { sessionId: "...", questionId: "..." } }
+   */
+  async saveAnswer(
+    userId: string,
+    sessionId: string,
+    saveAnswerDto: SaveAnswerDto,
+  ) {
+    // Step 1: Verify session exists and belongs to user (ownership validation)
+    const session = await this.prisma.examSession.findUnique({
+      where: { id: sessionId },
+      include: { exam: true },
+    });
+
+    // Return 404 if session not found OR doesn't belong to user
+    // (Use 404 to prevent leaking info about other users' sessions)
+    if (!session || session.userId !== userId) {
+      throw new NotFoundException('Session not found');
+    }
+
+    // Step 2: Verify session is IN_PROGRESS (cannot save answer if submitted/completed)
+    if (session.status !== ExamSessionStatus.IN_PROGRESS) {
+      throw new BadRequestException(
+        `Cannot save answer for session with status: ${session.status}`,
+      );
+    }
+
+    // Step 3: Verify question belongs to this exam
+    // This ensures guest cannot submit answer for questions from other exams
+    const question = await this.prisma.examQuestion.findFirst({
+      where: {
+        questionId: saveAnswerDto.questionId, // ← Use questionId field from ExamQuestion
+        examId: session.examId,
+      },
+    });
+
+    if (!question) {
+      throw new NotFoundException('Question not found in this exam');
+    }
+
+    // Step 4: Update answer using composite unique key (sessionId, questionId)
+    // Use update() instead of updateMany() because we have a unique constraint
+    const updatedAnswer = await this.prisma.examSessionAnswer.update({
+      where: {
+        sessionId_questionId: {
+          sessionId,
+          questionId: saveAnswerDto.questionId,
+        },
+      },
+      data: {
+        selectedOptionId: saveAnswerDto.selectedOptionId,
+        answeredAt: new Date(),
+      },
+    });
+
+    return updatedAnswer;
+  }
+
   getPublishedExams(examId: string) {
     return this.prisma.exam.findFirst({
       where: { id: examId, status: 'PUBLISHED' },
@@ -131,9 +200,9 @@ export class ExamsService {
       // Bulk create exam_session_answers for all questions
       if (exam.questions.length > 0) {
         await tx.examSessionAnswer.createMany({
-          data: exam.questions.map((question) => ({
+          data: exam.questions.map((examQuestion) => ({
             sessionId: session.id,
-            questionId: question.id,
+            questionId: examQuestion.questionId, // ← Use questionId from ExamQuestion
             selectedOptionId: null,
           })),
         });

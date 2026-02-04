@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Put,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -15,6 +16,7 @@ import { Roles } from 'src/auth/decorators/roles.decorator';
 import type { RequestWithUser } from 'src/auth/types/request-with-user';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { SubmitExamDto } from './dto/submit-exam.dto';
+import { SaveAnswerDto } from './dto/save-answer.dto';
 
 @Controller('exams')
 export class ExamsController {
@@ -48,6 +50,34 @@ export class ExamsController {
       request.user.sub,
       examId,
       submitExamDto,
+    );
+  }
+
+  /**
+   * UC-02: Save Answer (Lưu đáp án tạm thời)
+   *
+   * Route: PUT /exams/sessions/:sessionId/answers
+   * Auth: JwtAuthGuard (any authenticated user)
+   * Body: { questionId: string, selectedOptionId: string | null }
+   *
+   * Flow:
+   * 1. Extract userId from JWT (request.user.sub)
+   * 2. Extract sessionId from URL params
+   * 3. Extract answer data from request body
+   * 4. Call service.saveAnswer()
+   * 5. Return updated answer
+   */
+  @Put('sessions/:sessionId/answers')
+  @UseGuards(JwtAuthGuard)
+  saveAnswer(
+    @Req() request: RequestWithUser,
+    @Param('sessionId') sessionId: string,
+    @Body() saveAnswerDto: SaveAnswerDto,
+  ) {
+    return this.examsService.saveAnswer(
+      request.user.sub,
+      sessionId,
+      saveAnswerDto,
     );
   }
 
