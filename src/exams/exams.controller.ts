@@ -16,6 +16,7 @@ import { Roles } from 'src/auth/decorators/roles.decorator';
 import type { RequestWithUser } from 'src/auth/types/request-with-user';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { SaveAnswerDto } from './dto/save-answer.dto';
+import { ApproveExamAccessDto } from './dto/approve-exam-access.dto';
 
 @Controller('exams')
 export class ExamsController {
@@ -36,6 +37,19 @@ export class ExamsController {
   @Roles(Role.ADMIN)
   publishExam(@Param('id') examId: string) {
     return this.examsService.publishExam(examId);
+  }
+
+  @Post(':id/access/approve')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  approveExamAccess(
+    @Param('id') examId: string,
+    @Body() approveExamAccessDto: ApproveExamAccessDto,
+  ) {
+    return this.examsService.approveExamAccess(
+      examId,
+      approveExamAccessDto.userId,
+    );
   }
 
   @Post(':id/submit')

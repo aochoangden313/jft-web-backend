@@ -2,15 +2,64 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { SaveAnswerDto } from './dto/save-answer.dto';
-import { ExamSessionStatus } from '@prisma/client';
+import { ExamSessionStatus, UserRole } from '@prisma/client';
+
+const EXAM_ACCESS_APPROVED = 'APPROVED';
 
 @Injectable()
 export class ExamsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private async ensureUserRoleCanTakeExam(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.role !== UserRole.USER) {
+      throw new ForbiddenException('You are not allowed to take exams');
+    }
+  }
+
+  private getExamAccessClient() {
+    const prismaWithAccess = this.prisma as unknown as {
+      examAccess: {
+        findUnique: (args: unknown) => Promise<{ status: string } | null>;
+        upsert: (args: unknown) => Promise<unknown>;
+      };
+    };
+
+    return prismaWithAccess.examAccess;
+  }
+
+  private async ensureExamAccessApproved(userId: string, examId: string) {
+    const access = await this.getExamAccessClient().findUnique({
+      where: {
+        userId_examId: {
+          userId,
+          examId,
+        },
+      },
+    });
+
+    if (!access || access.status !== EXAM_ACCESS_APPROVED) {
+      throw new ForbiddenException('Exam access not approved');
+    }
+  }
+
+  private async ensureUserCanTakeExam(userId: string, examId: string) {
+    await this.ensureUserRoleCanTakeExam(userId);
+    await this.ensureExamAccessApproved(userId, examId);
+  }
 
   createExam(creatorId: string, createExamDto: CreateExamDto) {
     return this.prisma.exam.create({
@@ -26,6 +75,31 @@ export class ExamsService {
     return this.prisma.exam.update({
       where: { id: examId },
       data: { status: 'PUBLISHED' },
+    });
+  }
+
+  async approveExamAccess(examId: string, userId: string) {
+    const exam = await this.prisma.exam.findUnique({ where: { id: examId } });
+    if (!exam) {
+      throw new NotFoundException(`Exam with ID ${examId} not found`);
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.getExamAccessClient().upsert({
+      where: { userId_examId: { userId, examId } },
+      update: {
+        status: EXAM_ACCESS_APPROVED,
+        deletedAt: null,
+      },
+      create: {
+        userId,
+        examId,
+        status: EXAM_ACCESS_APPROVED,
+      },
     });
   }
 
@@ -58,6 +132,8 @@ export class ExamsService {
     if (session.userId !== userId) {
       throw new NotFoundException('Session not found');
     }
+
+    await this.ensureUserCanTakeExam(userId, examId);
 
     if (session.status !== ExamSessionStatus.IN_PROGRESS) {
       throw new BadRequestException(
@@ -168,6 +244,8 @@ export class ExamsService {
       throw new NotFoundException('Session not found');
     }
 
+    await this.ensureUserCanTakeExam(userId, session.examId);
+
     // Step 2: Verify session is IN_PROGRESS (cannot save answer if submitted/completed)
     if (session.status !== ExamSessionStatus.IN_PROGRESS) {
       throw new BadRequestException(
@@ -227,6 +305,8 @@ export class ExamsService {
     if (exam.status !== 'PUBLISHED') {
       throw new BadRequestException('Exam is not published');
     }
+
+    await this.ensureUserCanTakeExam(userId, examId);
 
     // Step 2: Check if user already has IN_PROGRESS session for this exam
 

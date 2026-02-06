@@ -30,6 +30,12 @@ enum ExamSessionStatus {
   SUBMITTED
 }
 
+enum ExamAccessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum SectionType {
   SCRIPT_VOCABULARY
   CONVERSATION_EXPRESSION
@@ -59,6 +65,7 @@ model User {
   refreshTokens RefreshToken[]
   exams         Exam[]         @relation("CreatedExams")
   examSessions  ExamSession[]
+  examAccesses  ExamAccess[]
   questions     Question[]     @relation("CreatedQuestions")
   examSets      ExamSet[]      @relation("CreatedExamSets")
 
@@ -136,6 +143,7 @@ model Exam {
 
   questions      ExamQuestion[]
   sessions       ExamSession[]
+  accessList     ExamAccess[]
   examSetExams   ExamSetExam[]
 
   @@index([status, deletedAt]) // Partial index cho published exams
@@ -194,6 +202,25 @@ model ExamSetExam {
 // ============================================
 // EXAM RUNTIME (CORE - UC-01)
 // ============================================
+
+model ExamAccess {
+  id     String           @id @default(uuid())
+  userId String
+  examId String
+  status ExamAccessStatus @default(PENDING)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // soft delete
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, examId])
+  @@index([userId])
+  @@index([examId])
+  @@index([status])
+}
 
 model ExamSession {
   id       String            @id @default(uuid())
