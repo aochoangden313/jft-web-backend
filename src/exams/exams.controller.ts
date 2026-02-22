@@ -95,6 +95,20 @@ export class ExamsController {
     return this.examsService.startSession(request.user.sub, examId);
   }
 
+  @Get(':id/sessions/:sessionId/result')
+  @UseGuards(JwtAuthGuard)
+  getExamSessionResult(
+    @Req() request: RequestWithUser,
+    @Param('id') examId: string,
+    @Param('sessionId') sessionId: string,
+  ) {
+    return this.examsService.getExamSessionResult(
+      request.user.sub,
+      examId,
+      sessionId,
+    );
+  }
+
   @Get(':id/sessions/:sessionId')
   @UseGuards(JwtAuthGuard)
   getExamSessionDetail(

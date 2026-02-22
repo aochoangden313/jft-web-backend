@@ -429,4 +429,79 @@ export class ExamsService {
       questions: mappedQuestions,
     };
   }
+
+  async getExamSessionResult(
+    userId: string,
+    examId: string,
+    sessionId: string,
+  ) {
+    // 1) LOAD SESSION - lấy session cùng với tất cả answers
+    const session = await this.prisma.examSession.findUnique({
+      where: { id: sessionId },
+      include: { answers: true },
+    });
+
+    // 2) VALIDATE OWNERSHIP - session phải tồn tại + thuộc user + thuộc exam đó
+    if (!session || session.userId !== userId || session.examId !== examId) {
+      throw new NotFoundException('Session not found');
+    }
+
+    // 3) VALIDATE STATUS - chỉ xem result khi đã SUBMITTED
+    if (session.status !== ExamSessionStatus.SUBMITTED) {
+      throw new BadRequestException(
+        'Session must be submitted to view results',
+      );
+    }
+
+    // 4) LOAD QUESTIONS - lấy tất cả câu hỏi + options (kèm isCorrect flag)
+    const questions = await this.prisma.examQuestion.findMany({
+      where: { examId: session.examId },
+      orderBy: { orderNo: 'asc' },
+      include: {
+        question: {
+          include: {
+            options: { orderBy: { orderNo: 'asc' } },
+          },
+        },
+      },
+    });
+
+    // 5) CREATE MAP - để dễ tìm answer của mỗi câu
+    const answersByQuestionId = new Map(
+      session.answers.map((answer) => [answer.questionId, answer]),
+    );
+
+    // 6) MAP DATA - tạo output kết quả kèm grading info
+    const questionResults = questions.map((examQuestion) => {
+      const answer = answersByQuestionId.get(examQuestion.questionId);
+
+      return {
+        questionId: examQuestion.questionId,
+        order: examQuestion.orderNo,
+        contentHtml: examQuestion.question.contentHtml,
+        selectedOptionId: answer?.selectedOptionId ?? null, // ← Cái user chọn (nhất quán với getExamSessionDetail)
+        correctOptionId: answer?.correctOptionId, // ← Đáp án đúng
+        isCorrect: answer?.isCorrect, // ← true/false/null
+        options: examQuestion.question.options.map((opt) => ({
+          id: opt.id,
+          contentHtml: opt.contentHtml,
+          isCorrect: opt.isCorrect, // ← Highlight đáp án đúng
+        })),
+      };
+    });
+
+    // 7) RETURN - trả về kết quả hoàn chỉnh
+    return {
+      sessionId,
+      examId,
+      status: session.status,
+      submittedAt: session.submittedAt,
+      startTime: session.startTime,
+      timeLimit: session.timeLimit,
+      totalCorrect: session.totalCorrect,
+      totalWrong: session.totalWrong,
+      totalUnanswered: session.totalUnanswered,
+      questions: questionResults,
+    };
+  }
 }
