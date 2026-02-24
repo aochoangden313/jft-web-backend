@@ -178,7 +178,18 @@ async function main() {
 
   console.log(`✅ Linked questions to exam`);
 
-  // 6. Print summary
+  // 6. Create exam access for test user
+  const examAccess = await prisma.examAccess.create({
+    data: {
+      userId: testUser.id,
+      examId: exam.id,
+      status: 'APPROVED',
+    },
+  });
+
+  console.log(`✅ Created exam access for user: ${examAccess.id}`);
+
+  // 7. Print summary
   console.log('\n📊 Summary:');
   console.log(`Exam ID: ${exam.id}`);
   console.log(`Question 1 ID: ${questions[0].id}`);
