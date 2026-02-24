@@ -7,7 +7,8 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   // Cấu hình CORS cho phép frontend truy cập
   // Hỗ trợ multiple origins: local development, Render production, etc.
-  const corsOrigin = process.env.CORS_ORIGIN?.split(',') || 'http://localhost:3001';
+  const corsOrigin =
+    process.env.CORS_ORIGIN?.split(',') || 'http://localhost:3001';
   app.enableCors({
     origin: corsOrigin,
     credentials: true,
