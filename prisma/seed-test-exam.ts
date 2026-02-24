@@ -5,23 +5,25 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Starting seed...');
 
-  // 1. Get existing test user
-  const testUser = await prisma.user.findUnique({
+  // 0. Create or find test user
+  const hashedPassword = await bcrypt.hash('password123', 10);
+  const testUser = await prisma.user.upsert({
     where: { email: 'testuser2@example.com' },
+    update: {},
+    create: {
+      email: 'testuser2@example.com',
+      password: hashedPassword,
+    },
   });
 
-  if (!testUser) {
-    console.error('❌ Test user not found. Please register first!');
-    return;
-  }
-
-  console.log(`✅ Found user: ${testUser.email} (${testUser.id})`);
+  console.log(`✅ Test user: ${testUser.email} (${testUser.id})`);
 
   // 2. Create exam
   const exam = await prisma.exam.create({
